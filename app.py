@@ -53,23 +53,22 @@ if bol_file and fulfilment_file:
 
         fulfilment_vrij, fulfilment_verwacht = match_fulfilment(ean, df_fulfilment)
 
+        if fulfilment_vrij <= 0 and fulfilment_verwacht <= 0:
+            continue
+
         if benchmark == "Twijfel":
             if fulfilment_vrij > 0:
                 advies = "Wel versturen – twijfel, voorraad beschikbaar"
             elif fulfilment_verwacht > 0:
                 advies = "Nog niet versturen – voorraad verwacht"
-            else:
-                continue
         elif benchmark == "Onvoldoende":
             if fulfilment_vrij > 0:
                 advies = "Wel versturen – onvoldoende op Bol, voorraad beschikbaar"
             elif fulfilment_verwacht > 0:
                 advies = "Nog niet versturen – voorraad verwacht"
-            else:
-                continue
 
         tekort = max(0, verkopen - bol_voorraad)
-        aanbevolen = min(fulfilment_vrij, round(tekort * 1.3))
+        aanbevolen = min(fulfilment_vrij, round(tekort * 1.3)) if fulfilment_vrij > 0 else 0
 
         resultaten.append({
             "EAN": ean,
