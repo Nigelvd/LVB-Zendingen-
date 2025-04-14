@@ -4,18 +4,15 @@ import pandas as pd
 import io
 
 st.set_page_config(page_title="LVB Advies Tool", layout="centered")
-st.title("🔐 LVB Advies Tool met Geoptimaliseerd Advies")
-st.markdown("Upload je Bol-export en fulfilment-export. Advies bevat concrete aantallen en verkopen worden als gehele getallen weergegeven.")
+st.title("🔐 LVB Advies Tool met Sterke Kleuren")
+st.markdown("Upload je Bol-export en fulfilment-export. Kleuren zijn nu fel en goed leesbaar.")
 
-# Wachtwoordcontrole
 wachtwoord = st.text_input("Voer wachtwoord in om verder te gaan:", type="password")
 if wachtwoord != "bhg2k25":
     st.stop()
 
-# Instelbare buffer
 buffer_percentage = st.slider("Instelbare buffer (% van verkopen):", min_value=10, max_value=100, value=30, step=5)
 
-# Uploadsectie
 bol_file = st.file_uploader("📦 Upload Bol-export (.xlsx)", type=["xlsx"])
 fulfilment_file = st.file_uploader("🏬 Upload Fulfilment-export (.xlsx)", type=["xlsx"])
 
@@ -25,7 +22,6 @@ if bol_file and fulfilment_file:
 
     df_bol["EAN"] = df_bol["EAN"].astype(str)
     df_fulfilment["EAN"] = df_fulfilment["EAN"].astype(str)
-
     df_bol["Verkopen (Totaal)"] = pd.to_numeric(df_bol["Verkopen (Totaal)"], errors="coerce").fillna(0).astype(int)
     df_bol["Vrije voorraad"] = pd.to_numeric(df_bol["Vrije voorraad"], errors="coerce").fillna(0)
     df_bol["Verzendtype"] = df_bol.iloc[:, 4].astype(str)
@@ -44,8 +40,8 @@ if bol_file and fulfilment_file:
         bol_voorraad = row["Vrije voorraad"]
         verkopen = row["Verkopen (Totaal)"]
         verzendtype = row["Verzendtype"]
-
         fulfilment_vrij, fulfilment_verwacht = match_fulfilment(ean, df_fulfilment)
+
         if fulfilment_vrij <= 0 and fulfilment_verwacht <= 0:
             continue
 
@@ -106,22 +102,20 @@ if bol_file and fulfilment_file:
             })
 
     df_resultaat = pd.DataFrame(resultaten)
-
-    # Sorteer op Benchmarkscore en Verzendtype
     benchmark_order = {"Onvoldoende": 0, "Twijfel": 1, "Voldoende": 2}
     df_resultaat["Benchmarkscore_sort"] = df_resultaat["Benchmarkscore"].map(benchmark_order)
     df_resultaat.sort_values(by=["Benchmarkscore_sort", "Verzendtype"], inplace=True)
     df_resultaat.drop(columns=["Benchmarkscore_sort"], inplace=True)
 
     def kleur_op_benchmark(row):
-        kleur = ""
         if row["Benchmarkscore"] == "Onvoldoende":
-            kleur = "background-color: #ffcccc;"  # lichtrood
+            return ["background-color: #ff3333; color: white"] * len(row)
         elif row["Benchmarkscore"] == "Twijfel":
-            kleur = "background-color: #fff4cc;"  # lichtoranje
+            return ["background-color: #ffaa00; color: black"] * len(row)
         elif row["Benchmarkscore"] == "Voldoende":
-            kleur = "background-color: #d6f5d6;"  # lichtgroen
-        return [kleur] * len(row)
+            return ["background-color: #33cc33; color: white"] * len(row)
+        else:
+            return [""] * len(row)
 
     st.success("✅ Adviesoverzicht gegenereerd!")
     st.dataframe(df_resultaat.style.apply(kleur_op_benchmark, axis=1), use_container_width=True)
