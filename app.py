@@ -1,10 +1,9 @@
-
 import streamlit as st
-st.warning('✅ [DEBUG] Gecombineerde versie met tabs is succesvol geladen.')
 import pandas as pd
 import io
 
-st.set_page_config(page_title="LVB Advies Tool", layout="wide")
+st.set_page_config(page_title="LVB Advies Tool", layout="wide")  # ✅ MOET HIERBOVENSTAAN
+st.warning("✅ [DEBUG] Gecombineerde versie met tabs is succesvol geladen.")  # ✔️ Debug erna
 
 st.title("📦 LVB Tool met Hermeting Controle")
 
