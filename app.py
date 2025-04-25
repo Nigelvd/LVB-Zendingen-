@@ -1,6 +1,6 @@
 
 import streamlit as st
-st.warning('✅ [DEBUG] Gecombineerde versie met tabs is succesvol geladen.')\n
+st.warning('✅ [DEBUG] Gecombineerde versie met tabs is succesvol geladen.')
 import pandas as pd
 import io
 
