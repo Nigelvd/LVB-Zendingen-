@@ -151,7 +151,7 @@ with tab2:
         df_hermeting.iloc[:, 0] = df_hermeting.iloc[:, 0].astype(str)
         df_verzonden.iloc[:, 2] = df_verzonden.iloc[:, 2].astype(str)
 
-        df_hermeting.rename(columns={'Gewenst formaat klasse van verpakking': 'Gewenst formaat'}, inplace=True)
+df_hermeting.rename(columns={'Gewenst formaat klasse van verpakking': 'Gewenst formaat'}, inplace=True)
         df_verzonden.columns.values[2] = 'EAN'
         df_verzonden.columns.values[5] = 'Ordernummer'
         df_verzonden.columns.values[7] = 'Verzonden formaat'
