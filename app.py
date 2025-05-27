@@ -2,9 +2,9 @@
 import streamlit as st
 import pandas as pd
 import io
-import zipfile
 
 st.set_page_config(page_title="LVB Advies Tool", layout="wide")
+
 st.title("📦 LVB Tool met Hermeting Controle")
 
 tab1, tab2, tab3 = st.tabs(["📦 LVB Advies", "📏 Hermeting Controle", "📊 GAP Analyse"])
@@ -14,13 +14,10 @@ with tab1:
     if wachtwoord != "bhg2k25":
         st.stop()
 
-    st.subheader("🔽 Upload bestanden")
+    buffer_percentage = st.slider("Instelbare buffer (% van verkopen):", min_value=10, max_value=100, value=30, step=5)
+
     bol_file = st.file_uploader("📤 Upload Bol-export (.xlsx)", type=["xlsx"])
     fulfilment_file = st.file_uploader("🏬 Upload Fulfilment-export (.xlsx)", type=["xlsx"])
-    vorige_file = st.file_uploader("📂 Upload vorige zending (.xlsx)", type=["xlsx"])
-    filter_aan = st.checkbox("🧹 Filter producten die al aangemeld zijn", value=True)
-
-    buffer_percentage = st.slider("📊 Bufferpercentage (% van verkopen):", 10, 100, 30, 5)
 
     if bol_file and fulfilment_file:
         df_bol = pd.read_excel(bol_file)
@@ -28,38 +25,15 @@ with tab1:
 
         df_bol["EAN"] = df_bol["EAN"].astype(str)
         df_fulfilment["EAN"] = df_fulfilment["EAN"].astype(str)
-
         df_bol["Verkopen (Totaal)"] = pd.to_numeric(df_bol["Verkopen (Totaal)"], errors="coerce").fillna(0).astype(int)
         df_bol["Vrije voorraad"] = pd.to_numeric(df_bol["Vrije voorraad"], errors="coerce").fillna(0)
         df_bol["Verzendtype"] = df_bol.iloc[:, 4].astype(str)
-
-        df_uitgefilterd = pd.DataFrame()
-        if vorige_file and filter_aan:
-            try:
-                df_vorige = pd.read_excel(vorige_file)
-                df_vorige["EAN"] = df_vorige["EAN"].astype(str)
-                df_uitgefilterd = df_bol[df_bol["EAN"].isin(df_vorige["EAN"])]
-                df_bol = df_bol[~df_bol["EAN"].isin(df_vorige["EAN"])]
-                st.info(f"🔍 {len(df_uitgefilterd)} producten uit vorige zending gefilterd.")
-
-                if not df_uitgefilterd.empty:
-                    st.subheader("📋 Uitgefilterde producten")
-                    st.dataframe(df_uitgefilterd[["EAN"]], use_container_width=True)
-
-                    excel_buffer = io.BytesIO()
-                    df_uitgefilterd[["EAN"]].to_excel(excel_buffer, index=False, engine="openpyxl")
-                    st.download_button("📥 Download gefilterde EAN's als Excel", data=excel_buffer.getvalue(), file_name="uitgefilterde_eans.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-                    csv_data = df_uitgefilterd[["EAN"]].to_csv(index=False).encode("utf-8")
-                    st.download_button("📄 Download gefilterde EAN's als CSV", data=csv_data, file_name="uitgefilterde_eans.csv", mime="text/csv")
-            except Exception as e:
-                st.warning(f"⚠️ Fout bij verwerken vorige zending: {e}")
 
         def match_fulfilment(ean, voorraad_df):
             for _, row in voorraad_df.iterrows():
                 ean_list = str(row["EAN"]).split(",")
                 if ean in [e.strip() for e in ean_list]:
-                    return row["Vrije voorraad"], row.get("Verwachte voorraad", 0)
+                    return row["Vrije voorraad"], row["Verwachte voorraad"]
             return 0, 0
 
         resultaten = []
@@ -93,10 +67,32 @@ with tab1:
                     if fulfilment_vrij > 0:
                         advies = "Voorraad krap – versturen aanbevolen"
                         aanbevolen = min(fulfilment_vrij, round(tekort * 1.3))
+                    elif fulfilment_verwacht > 0:
+                        advies = "Nog niet versturen – voorraad verwacht"
+                        aanbevolen = 0
+                    else:
+                        continue
                 elif benchmark == "Onvoldoende":
                     if fulfilment_vrij > 0:
                         advies = f"Verstuur minimaal {tekort} stuks"
                         aanbevolen = min(fulfilment_vrij, round(tekort * 1.3))
+                    elif fulfilment_verwacht > 0:
+                        advies = "Nog niet versturen – voorraad verwacht"
+                        aanbevolen = 0
+                    else:
+                        continue
+                elif benchmark == "Voldoende":
+                    if verzendtype.strip().upper() != "LVB":
+                        if fulfilment_vrij > 0:
+                            advies = "Niet op LVB – voorraad beschikbaar – overweeg naar LVB te sturen"
+                            aanbevolen = min(fulfilment_vrij, round(verkopen * 1.3))
+                        elif fulfilment_verwacht > 0:
+                            advies = "Nog niet versturen – voorraad verwacht (niet LVB)"
+                            aanbevolen = 0
+                        else:
+                            continue
+                    else:
+                        continue
 
                 resultaten.append({
                     "EAN": ean,
@@ -111,22 +107,98 @@ with tab1:
                     "Aanbevolen aantal mee te sturen (x1.3 buffer)": aanbevolen
                 })
 
-        if resultaten:
-            df_resultaat = pd.DataFrame(resultaten)
-            st.success("✅ Adviesoverzicht gegenereerd!")
-            st.dataframe(df_resultaat, use_container_width=True)
+        df_resultaat = pd.DataFrame(resultaten)
 
-            excel_buffer = io.BytesIO()
-            df_resultaat.to_excel(excel_buffer, index=False, engine='openpyxl')
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as z:
-                z.writestr("LVB_Advies_Overzicht.xlsx", excel_buffer.getvalue())
-            st.download_button("📦 Download als ZIP (Excel)", data=zip_buffer.getvalue(), file_name="LVB_Advies_Overzicht.zip", mime="application/zip")
-        else:
-            st.info("ℹ️ Geen nieuwe producten waarvoor advies nodig is.")
+        benchmark_order = {"Onvoldoende": 0, "Twijfel": 1, "Voldoende": 2}
+        df_resultaat["Benchmarkscore_sort"] = df_resultaat["Benchmarkscore"].map(benchmark_order)
+        df_resultaat.sort_values(by=["Benchmarkscore_sort", "Verzendtype"], inplace=True)
+        df_resultaat.drop(columns=["Benchmarkscore_sort"], inplace=True)
+
+        def kleur_op_benchmark(row):
+            if row["Benchmarkscore"] == "Onvoldoende":
+                return ["background-color: #ff3333; color: white"] * len(row)
+            elif row["Benchmarkscore"] == "Twijfel":
+                return ["background-color: #ffaa00; color: black"] * len(row)
+            elif row["Benchmarkscore"] == "Voldoende":
+                return ["background-color: #33cc33; color: white"] * len(row)
+            else:
+                return [""] * len(row)
+
+        st.success("✅ Adviesoverzicht gegenereerd!")
+        st.dataframe(df_resultaat.style.apply(kleur_op_benchmark, axis=1), use_container_width=True)
+
+        buffer = io.BytesIO()
+        df_resultaat.to_excel(buffer, index=False, engine='openpyxl')
+        st.download_button("📥 Download als Excel", data=buffer.getvalue(), file_name="LVB_Advies_Overzicht.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        csv = df_resultaat.to_csv(index=False).encode('utf-8')
+        st.download_button("📄 Download als CSV", data=csv, file_name="LVB_Advies_Overzicht.csv", mime="text/csv")
 
 with tab2:
-    st.subheader("📏 Hermeting Controle (placeholder)")
+    st.subheader("📏 Hermeting Controle")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        hermeting_bestand = st.file_uploader("Upload je hermeting sheet (EAN, Naam, Gewenst formaat)", type=["xlsx"], key="hermeting")
+    with col2:
+        bol_verzendingen = st.file_uploader("Upload Bol verzendexport (EAN, Verzonden formaat)", type=["xlsx"], key="verzending")
+
+    if hermeting_bestand and bol_verzendingen:
+        df_hermeting_raw = pd.read_excel(hermeting_bestand, dtype=str)
+        df_hermeting = df_hermeting_raw.iloc[:, [0, 1, 2]].copy()
+        df_hermeting.columns = ['EAN', 'Productnaam', 'Gewenst formaat']
+        df_hermeting['EAN'] = df_hermeting['EAN'].astype(str)
+
+        df_verzonden_raw = pd.read_excel(bol_verzendingen, header=None, dtype=str)
+        df_verzonden = pd.DataFrame()
+        df_verzonden['EAN'] = df_verzonden_raw.iloc[:, 2]
+        df_verzonden['Verzonden formaat'] = df_verzonden_raw.iloc[:, 7]
+        df_verzonden.dropna(subset=['EAN'], inplace=True)
+        df_verzonden.dropna(subset=['Verzonden formaat'], inplace=True)
+        df_verzonden['EAN'] = df_verzonden['EAN'].astype(str)
+
+        df_vergelijk = pd.merge(df_verzonden, df_hermeting, on='EAN', how='left')
+
+        # Verwijder rijen waarbij beide formaten leeg zijn
+        df_vergelijk = df_vergelijk.dropna(subset=['Gewenst formaat', 'Verzonden formaat'])
+
+        # Zoek nu echte afwijkingen
+        df_afwijkend = df_vergelijk[
+            df_vergelijk['Verzonden formaat'].str.lower() != df_vergelijk['Gewenst formaat'].str.lower()
+        ]
+
+        df_afwijkend = df_afwijkend.drop_duplicates(subset=['EAN'])
+
+        if not df_afwijkend.empty:
+            df_afwijkend['Afwijking'] = "✅ Ja"
+            st.success(f"🔎 {len(df_afwijkend)} afwijkende formaten gevonden")
+            st.dataframe(df_afwijkend[['EAN', 'Productnaam', 'Gewenst formaat', 'Verzonden formaat', 'Afwijking']], use_container_width=True)
+
+            buffer = io.BytesIO()
+            df_afwijkend.to_excel(buffer, index=False, engine='openpyxl')
+            st.download_button("📥 Download afwijkingen als Excel", data=buffer.getvalue(), file_name="hermeting_afwijkingen.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+            csv = df_afwijkend.to_csv(index=False).encode('utf-8')
+            st.download_button("📄 Download als CSV", data=csv, file_name="hermeting_afwijkingen.csv", mime="text/csv")
+        else:
+            st.info("✅ Geen afwijkingen gevonden. Alles komt overeen met je verwachte formaten.")
 
 with tab3:
-    st.subheader("📊 GAP Analyse (placeholder)")
+    st.header("📊 GAP Analyse Tool")
+
+    st.markdown("Voer hieronder de links in van je eigen Bol.com listing en drie concurrenten om een vergelijking te maken.")
+
+    eigen_link = st.text_input("🔗 Link naar jouw product")
+    concurrent_links = []
+    for i in range(1, 4):
+        link = st.text_input(f"🔗 Link naar concurrent {i}")
+        concurrent_links.append(link)
+
+    if st.button("📈 Vergelijk Listings"):
+        if not eigen_link or any(not link for link in concurrent_links):
+            st.warning("Vul alle links in voordat je vergelijkt.")
+        else:
+            st.success("Links succesvol ontvangen! (De vergelijking volgt in de volgende versie.)")
+            st.write("Jouw productlink:", eigen_link)
+            for idx, link in enumerate(concurrent_links, start=1):
+                st.write(f"Concurrent {idx}:", link)
